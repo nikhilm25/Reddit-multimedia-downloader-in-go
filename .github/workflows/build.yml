@@ -1,0 +1,61 @@
+name: Multi-Platform Build Pipeline
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  push:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  cross-compile:
+    runs-on: ubuntu-latest
+    env:
+      APP_NAME: Reddit-multimedia-downloader-in-go
+      GO_VERSION: '1.19'
+      
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+    
+    - name: Configure Go Environment
+      uses: actions/setup-go@v3
+      with:
+        go-version: ${{ env.GO_VERSION }}
+        check-latest: true
+        cache: true
+   
+    - name: Build Artifacts
+      run: |
+        # Set release metadata
+        echo "RELEASE_NAME=release-$(date '+%Y.%m.%d-%H%M')" >> $GITHUB_ENV
+        echo "RELEASE_NOTES=🚀 Automated build generated on $(date '+%Y-%m-%d at %H:%M UTC')" >> $GITHUB_ENV
+
+        # Install cross-compilation tool
+        go install github.com/mitchellh/gox@latest
+
+        # Cross-compile for target platforms
+        gox -osarch="linux/amd64 linux/arm darwin/amd64 darwin/arm64 windows/amd64 windows/386" \
+            -output="${{ env.APP_NAME }}_{{.OS}}_{{.Arch}}" \
+            ./cmd/${{ env.APP_NAME }}/
+
+        # Create distribution archives
+        for OS in linux darwin windows; do
+          find . -name "${{ env.APP_NAME }}_${OS}_*" \
+            -exec tar -czf "${{ env.APP_NAME }}_${OS}.tar.gz" {} +
+        done
+    
+    - name: Publish Release
+      uses: softprops/action-gh-release@v0.1.15
+      with:
+        name: ${{ env.RELEASE_NAME }}
+        body: ${{ env.RELEASE_NOTES }}
+        tag_name: 'latest'
+        files: |
+          ${{ env.APP_NAME }}_linux.tar.gz 
+          ${{ env.APP_NAME }}_darwin.tar.gz
+          ${{ env.APP_NAME }}_windows.tar.gz
